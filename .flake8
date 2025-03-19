@@ -1,5 +1,4 @@
 [flake8]
 max-line-length = 100
-exclude = .git,__pycache__,build,dist,venv
-per-file-ignores = __init__.py:F401,F403
-ignore = E203,W503 
+ignore = W291, W293  # Ignore trailing whitespace and blank line contains whitespace
+exclude = .git,__pycache__,docs/source/conf.py,old,build,dist,venv
