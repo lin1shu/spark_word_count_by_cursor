@@ -6,9 +6,10 @@ It provides a consistent format and centralized configuration for all logging.
 """
 
 import logging
+import logging.config
 import os
 import sys
-from typing import Optional, Union, Dict, Any
+from typing import Any, Dict, Optional, Union
 
 # Default log levels
 DEFAULT_LOG_LEVEL = "INFO"
@@ -49,7 +50,8 @@ def configure_logging(
     level = level or os.environ.get("LOG_LEVEL", DEFAULT_LOG_LEVEL)
     pyspark_level = pyspark_level or os.environ.get("PYSPARK_LOG_LEVEL", DEFAULT_PYSPARK_LOG_LEVEL)
     format_string = format_string or (
-        DETAILED_FORMAT if os.environ.get("LOG_DETAILED", "").lower() in ("true", "1", "t")
+        DETAILED_FORMAT
+        if os.environ.get("LOG_DETAILED", "").lower() in ("true", "1", "t")
         else SIMPLE_FORMAT
     )
 
@@ -61,7 +63,7 @@ def configure_logging(
 
     # Basic configuration for root logger
     handlers: Dict[str, Any] = {}
-    
+
     # Always add a console handler
     handlers["console"] = {
         "class": "logging.StreamHandler",
@@ -69,7 +71,7 @@ def configure_logging(
         "formatter": "default",
         "stream": sys.stderr,
     }
-    
+
     # Add a file handler if log_file is specified
     if log_file:
         handlers["file"] = {
@@ -79,34 +81,36 @@ def configure_logging(
             "filename": log_file,
             "mode": "a",
         }
-    
+
     # Configure logging
-    logging.config.dictConfig({
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "default": {
-                "format": format_string,
+    logging.config.dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "default": {
+                    "format": format_string,
+                },
             },
-        },
-        "handlers": handlers,
-        "loggers": {
-            "": {  # Root logger
-                "level": level,
-                "handlers": list(handlers.keys()),
-                "propagate": True,
+            "handlers": handlers,
+            "loggers": {
+                "": {  # Root logger
+                    "level": level,
+                    "handlers": list(handlers.keys()),
+                    "propagate": True,
+                },
+                "pyspark": {
+                    "level": pyspark_level,
+                    "handlers": list(handlers.keys()),
+                    "propagate": False,
+                },
+                "py4j": {
+                    "level": pyspark_level,
+                    "handlers": list(handlers.keys()),
+                    "propagate": False,
+                },
             },
-            "pyspark": {
-                "level": pyspark_level,
-                "handlers": list(handlers.keys()),
-                "propagate": False,
-            },
-            "py4j": {
-                "level": pyspark_level,
-                "handlers": list(handlers.keys()),
-                "propagate": False,
-            },
-        },
-    })
-    
-    logging.getLogger(__name__).debug("Logging configured successfully.") 
+        }
+    )
+
+    logging.getLogger(__name__).debug("Logging configured successfully.")
