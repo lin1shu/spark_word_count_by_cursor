@@ -1,6 +1,0 @@
-This is a sample text file to test the Spark word counting job.
-The job should count how many times each word appears in this file.
-Words like "the", "a", and "in" will likely appear multiple times.
-The results will show which words are most frequent in this text.
-Spark is a powerful distributed computing framework that can process large amounts of data.
-This sample is small, but the same code can process gigabytes or terabytes of text data. 
