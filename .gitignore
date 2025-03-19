@@ -78,6 +78,9 @@ metastore_db/
 # PySpark results
 results/
 
+# Large data files
+data/large_sample.txt
+
 # Data files
 data/
 *.txt 
