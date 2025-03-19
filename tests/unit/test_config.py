@@ -5,9 +5,14 @@ Unit tests for the config module.
 import os
 from unittest import mock
 
-import pytest
-
-from spark_word_count.config import AppConfig, DatabaseConfig, SparkConfig, WebConfig, get_db_config, get_config
+from spark_word_count.config import (
+    AppConfig,
+    DatabaseConfig,
+    SparkConfig,
+    WebConfig,
+    get_config,
+    get_db_config,
+)
 
 
 def test_database_config_defaults():

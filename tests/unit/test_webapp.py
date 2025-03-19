@@ -17,7 +17,7 @@ def app():
         # Create a mock cursor
         mock_cursor = mock.MagicMock()
         mock_db_conn.return_value.cursor.return_value = mock_cursor
-        
+
         # Set up mock responses for different queries
         def execute_side_effect(query, *args, **kwargs):
             if "SUM" in query and "total_words" in query:
@@ -34,12 +34,12 @@ def app():
                     {"word": "and", "count": 40000},
                     {"word": "to", "count": 30000},
                 ]
-        
+
         mock_cursor.execute.side_effect = execute_side_effect
-        
+
         app = create_app()
         app.config["TESTING"] = True
-        
+
         with app.test_client() as client:
             yield client
 
@@ -54,7 +54,7 @@ def test_api_top_words(app):
     """Test the top words API endpoint."""
     response = app.get("/api/top_words")
     assert response.status_code == 200
-    
+
     data = json.loads(response.data)
     assert isinstance(data, list)
     assert len(data) > 0
@@ -66,7 +66,7 @@ def test_api_stats(app):
     """Test the stats API endpoint."""
     response = app.get("/api/stats")
     assert response.status_code == 200
-    
+
     data = json.loads(response.data)
     assert "total_words" in data
     assert "unique_words" in data

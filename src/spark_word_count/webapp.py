@@ -3,7 +3,7 @@ Web application for displaying word count results.
 """
 
 import logging
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List, Tuple
 
 import psycopg2
 from flask import Flask, jsonify, render_template, request
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def get_db_connection() -> psycopg2.extensions.connection:
     """Create a connection to the PostgreSQL database.
-    
+
     Returns:
         psycopg2.extensions.connection: A connection to the PostgreSQL database
     """
@@ -38,10 +38,10 @@ def get_db_connection() -> psycopg2.extensions.connection:
 
 def get_top_words(limit: int = 10) -> List[Dict[str, Any]]:
     """Get the top N words by frequency.
-    
+
     Args:
         limit: Number of top words to return (default: 10)
-        
+
     Returns:
         List[Dict[str, Any]]: List of word count records, each with 'word' and 'count' keys
     """
@@ -60,7 +60,9 @@ def get_top_words(limit: int = 10) -> List[Dict[str, Any]]:
         results = cursor.fetchall()
         cursor.close()
         connection.close()
-        return results
+        
+        # Convert RealDictRow to Dict
+        return [dict(row) for row in results]
     except Exception as e:
         logger.error(f"Error fetching top words: {e}")
         return []
@@ -68,7 +70,7 @@ def get_top_words(limit: int = 10) -> List[Dict[str, Any]]:
 
 def get_word_stats() -> Dict[str, Any]:
     """Get statistics about the word counts.
-    
+
     Returns:
         Dict[str, Any]: Dictionary containing word count statistics
     """
@@ -78,15 +80,18 @@ def get_word_stats() -> Dict[str, Any]:
         
         # Get total words
         cursor.execute("SELECT SUM(count) as total_words FROM word_counts")
-        total_words = cursor.fetchone()["total_words"]
+        result = cursor.fetchone()
+        total_words = 0 if result is None else result["total_words"]
         
         # Get unique words count
         cursor.execute("SELECT COUNT(*) as unique_words FROM word_counts")
-        unique_words = cursor.fetchone()["unique_words"]
+        result = cursor.fetchone()
+        unique_words = 0 if result is None else result["unique_words"]
         
         # Get average frequency
         cursor.execute("SELECT AVG(count) as avg_frequency FROM word_counts")
-        avg_frequency = cursor.fetchone()["avg_frequency"]
+        result = cursor.fetchone()
+        avg_frequency = 0 if result is None else result["avg_frequency"]
         
         # Get median frequency
         cursor.execute(
@@ -95,7 +100,8 @@ def get_word_stats() -> Dict[str, Any]:
             FROM word_counts
             """
         )
-        median_frequency = cursor.fetchone()["median_frequency"]
+        result = cursor.fetchone()
+        median_frequency = 0 if result is None else result["median_frequency"]
         
         cursor.close()
         connection.close()
@@ -118,10 +124,10 @@ def get_word_stats() -> Dict[str, Any]:
 
 def get_word_frequency(word: str) -> int:
     """Get the frequency of a specific word.
-    
+
     Args:
         word: The word to look up
-        
+
     Returns:
         int: The frequency of the word, or 0 if not found
     """
@@ -136,8 +142,8 @@ def get_word_frequency(word: str) -> int:
         cursor.close()
         connection.close()
         
-        if result:
-            return result[0]
+        if result is not None and len(result) > 0:
+            return int(result[0])
         return 0
     except Exception as e:
         logger.error(f"Error fetching word frequency: {e}")
@@ -146,7 +152,7 @@ def get_word_frequency(word: str) -> int:
 
 def get_frequency_distribution() -> Dict[str, int]:
     """Get the distribution of word frequencies.
-    
+
     Returns:
         Dict[str, int]: Dictionary with frequency ranges as keys and counts as values
     """
@@ -164,7 +170,7 @@ def get_frequency_distribution() -> Dict[str, int]:
             (100001, float("inf")),
         ]
         
-        distribution = {}
+        distribution: Dict[str, int] = {}
         
         for start, end in ranges:
             if end == float("inf"):
@@ -180,7 +186,11 @@ def get_frequency_distribution() -> Dict[str, int]:
                 )
                 range_name = f"{start}-{end}"
             
-            distribution[range_name] = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            if result is not None and len(result) > 0:
+                distribution[range_name] = int(result[0])
+            else:
+                distribution[range_name] = 0
         
         cursor.close()
         connection.close()
@@ -192,26 +202,26 @@ def get_frequency_distribution() -> Dict[str, int]:
 
 def create_app() -> Flask:
     """Create the Flask application.
-    
+
     Returns:
         Flask: The Flask application instance
     """
     app = Flask(__name__, static_folder="static", template_folder="templates")
     CORS(app)
-    
+
     @app.route("/")
     def index() -> str:
         """Render the main index page.
-        
+
         Returns:
             str: Rendered HTML template
         """
         return render_template("index.html")
-    
+
     @app.route("/api/top_words")
     def api_top_words() -> Tuple[Any, int]:
         """API endpoint to get top words.
-        
+
         Returns:
             Tuple[Any, int]: JSON response and HTTP status code
         """
@@ -221,11 +231,11 @@ def create_app() -> Flask:
         except Exception as e:
             logger.error(f"Error in top_words API: {e}")
             return jsonify({"error": str(e)}), 500
-    
+
     @app.route("/api/stats")
     def api_stats() -> Tuple[Any, int]:
         """API endpoint to get word statistics.
-        
+
         Returns:
             Tuple[Any, int]: JSON response and HTTP status code
         """
@@ -234,14 +244,14 @@ def create_app() -> Flask:
         except Exception as e:
             logger.error(f"Error in stats API: {e}")
             return jsonify({"error": str(e)}), 500
-    
+
     @app.route("/api/word/<word>")
     def api_word(word: str) -> Tuple[Any, int]:
         """API endpoint to get frequency for a specific word.
-        
+
         Args:
             word: The word to look up
-            
+
         Returns:
             Tuple[Any, int]: JSON response and HTTP status code
         """
@@ -251,11 +261,11 @@ def create_app() -> Flask:
         except Exception as e:
             logger.error(f"Error in word API: {e}")
             return jsonify({"error": str(e)}), 500
-    
+
     @app.route("/api/distribution")
     def api_distribution() -> Tuple[Any, int]:
         """API endpoint to get frequency distribution.
-        
+
         Returns:
             Tuple[Any, int]: JSON response and HTTP status code
         """
@@ -265,13 +275,13 @@ def create_app() -> Flask:
         except Exception as e:
             logger.error(f"Error in distribution API: {e}")
             return jsonify({"error": str(e)}), 500
-    
+
     return app
 
 
 def run_app(debug: bool = False, host: str = "0.0.0.0", port: int = 5000) -> None:
     """Run the Flask application.
-    
+
     Args:
         debug: Enable debug mode (default: False)
         host: Host to bind the server to (default: 0.0.0.0)
@@ -284,7 +294,7 @@ def run_app(debug: bool = False, host: str = "0.0.0.0", port: int = 5000) -> Non
 def main() -> None:
     """Command line interface for the web application."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Word Count Web Application")
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
     parser.add_argument(
@@ -293,7 +303,7 @@ def main() -> None:
     parser.add_argument(
         "--port", type=int, default=5000, help="Port to run the server on (default: 5000)"
     )
-    
+
     args = parser.parse_args()
     run_app(debug=args.debug, host=args.host, port=args.port)
 

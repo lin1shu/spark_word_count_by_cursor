@@ -2,6 +2,8 @@
 PostgreSQL integration for Spark Word Count.
 """
 
+from typing import Dict
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col,
@@ -16,18 +18,18 @@ from pyspark.sql.functions import (
 
 
 def word_count_postgres(
-    input_path,
-    jdbc_url,
-    db_properties,
-    jdbc_jar_path="jars/postgresql-42.6.0.jar",
-    memory="4g",
-    executor_memory="4g",
-    max_result_size="2g",
-    batch_size=10000,
-):
+    input_path: str,
+    jdbc_url: str,
+    db_properties: Dict[str, str],
+    jdbc_jar_path: str = "jars/postgresql-42.6.0.jar",
+    memory: str = "4g",
+    executor_memory: str = "4g",
+    max_result_size: str = "2g",
+    batch_size: int = 10000,
+) -> None:
     """
     Count word frequencies in a text document using PySpark and save results to PostgreSQL.
-    
+
     Args:
         input_path (str): Path to the input text file
         jdbc_url (str): JDBC URL for the PostgreSQL database
@@ -39,17 +41,16 @@ def word_count_postgres(
         batch_size (int): Batch size for writing to PostgreSQL
     """
     # Initialize Spark session with PostgreSQL JDBC driver and optimized configuration
-    spark = SparkSession.builder.appName("WordCount").config(
-        "spark.jars", jdbc_jar_path
-    ).config("spark.driver.memory", memory).config(
-        "spark.executor.memory", executor_memory
-    ).config(
-        "spark.driver.maxResultSize", max_result_size
-    ).config(
-        "spark.sql.shuffle.partitions", "10"
-    ).config(
-        "spark.default.parallelism", "10"
-    ).getOrCreate()
+    spark = (
+        SparkSession.builder.appName("WordCount")
+        .config("spark.jars", jdbc_jar_path)
+        .config("spark.driver.memory", memory)
+        .config("spark.executor.memory", executor_memory)
+        .config("spark.driver.maxResultSize", max_result_size)
+        .config("spark.sql.shuffle.partitions", "10")
+        .config("spark.default.parallelism", "10")
+        .getOrCreate()
+    )
 
     # Set log level to reduce verbosity
     spark.sparkContext.setLogLevel("WARN")
@@ -65,7 +66,8 @@ def word_count_postgres(
         explode(
             split(
                 # Remove punctuation and convert to lowercase
-                regexp_replace(lower(trim(col("value"))), "[^a-zA-Z\\s]", ""), "\\s+"
+                regexp_replace(lower(trim(col("value"))), "[^a-zA-Z\\s]", ""),
+                "\\s+",
             )
         ).alias("word")
     )
@@ -100,18 +102,18 @@ def word_count_postgres(
 
 
 def word_count_update(
-    input_path,
-    jdbc_url,
-    db_properties,
-    jdbc_jar_path="jars/postgresql-42.6.0.jar",
-    memory="4g",
-    executor_memory="4g",
-    max_result_size="2g",
-    batch_size=10000,
-):
+    input_path: str,
+    jdbc_url: str,
+    db_properties: Dict[str, str],
+    jdbc_jar_path: str = "jars/postgresql-42.6.0.jar",
+    memory: str = "4g",
+    executor_memory: str = "4g",
+    max_result_size: str = "2g",
+    batch_size: int = 10000,
+) -> None:
     """
     Count word frequencies in a text document using PySpark and update results in PostgreSQL.
-    
+
     Args:
         input_path (str): Path to the input text file
         jdbc_url (str): JDBC URL for the PostgreSQL database
@@ -123,17 +125,16 @@ def word_count_update(
         batch_size (int): Batch size for writing to PostgreSQL
     """
     # Initialize Spark session with PostgreSQL JDBC driver and optimized configuration
-    spark = SparkSession.builder.appName("WordCountUpdate").config(
-        "spark.jars", jdbc_jar_path
-    ).config("spark.driver.memory", memory).config(
-        "spark.executor.memory", executor_memory
-    ).config(
-        "spark.driver.maxResultSize", max_result_size
-    ).config(
-        "spark.sql.shuffle.partitions", "10"
-    ).config(
-        "spark.default.parallelism", "10"
-    ).getOrCreate()
+    spark = (
+        SparkSession.builder.appName("WordCountUpdate")
+        .config("spark.jars", jdbc_jar_path)
+        .config("spark.driver.memory", memory)
+        .config("spark.executor.memory", executor_memory)
+        .config("spark.driver.maxResultSize", max_result_size)
+        .config("spark.sql.shuffle.partitions", "10")
+        .config("spark.default.parallelism", "10")
+        .getOrCreate()
+    )
 
     # Set log level to reduce verbosity
     spark.sparkContext.setLogLevel("WARN")
@@ -149,7 +150,8 @@ def word_count_update(
         explode(
             split(
                 # Remove punctuation and convert to lowercase
-                regexp_replace(lower(trim(col("value"))), "[^a-zA-Z\\s]", ""), "\\s+"
+                regexp_replace(lower(trim(col("value"))), "[^a-zA-Z\\s]", ""),
+                "\\s+",
             )
         ).alias("word")
     )
@@ -193,9 +195,7 @@ def word_count_update(
             (
                 col("count") + col("new_count")
                 if col("count").isNotNull() and col("new_count").isNotNull()
-                else col("count")
-                if col("count").isNotNull()
-                else col("new_count")
+                else col("count") if col("count").isNotNull() else col("new_count")
             ).alias("count"),
         )
 
@@ -226,7 +226,7 @@ def word_count_update(
     spark.stop()
 
 
-def main():
+def main() -> None:
     """Command line interface for the PostgreSQL word count functionality."""
     import sys
 

@@ -6,16 +6,17 @@ import logging
 import logging.config
 import os
 import sys
-from typing import Dict, List, Any, Union, Optional, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict, Union
 
 
-class HandlerDict(TypedDict):
+# Define handler configuration type
+class HandlerDict(TypedDict, total=False):
     """TypedDict for handler configuration."""
-    class_: str
-    level: Union[str, int]
+    class_: str  # Will be mapped to 'class' in the configuration
     formatter: str
+    level: Union[str, int]
     filename: Optional[str]
-    stream: Optional[Union[str, object]]
+    stream: Optional[Any]
 
 
 class LoggerDict(TypedDict):
@@ -29,7 +30,7 @@ class LoggingConfig(TypedDict):
     """TypedDict for logging configuration."""
     version: int
     formatters: Dict[str, Dict[str, Any]]
-    handlers: Dict[str, HandlerDict]
+    handlers: Dict[str, Dict[str, Any]]
     loggers: Dict[str, LoggerDict]
     root: LoggerDict
 
@@ -38,7 +39,7 @@ def get_logging_config(
     level: Union[str, int] = "INFO",
     log_file: Optional[str] = None,
     log_to_console: bool = True,
-) -> LoggingConfig:
+) -> Dict[str, Any]:
     """
     Get the logging configuration.
     
@@ -48,20 +49,19 @@ def get_logging_config(
         log_to_console: Whether to log to console (default: True)
         
     Returns:
-        LoggingConfig: Logging configuration dictionary
+        Dict[str, Any]: Logging configuration dictionary
     """
     handlers: List[str] = []
-    handlers_config: Dict[str, HandlerDict] = {}
+    handlers_config: Dict[str, Dict[str, Any]] = {}
     
     # Console handler
     if log_to_console:
         handlers.append("console")
         handlers_config["console"] = {
-            "class_": "logging.StreamHandler",
+            "class": "logging.StreamHandler",
             "level": level,
             "formatter": "standard",
             "stream": sys.stdout,
-            "filename": None,
         }
     
     # File handler
@@ -69,22 +69,21 @@ def get_logging_config(
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         handlers.append("file")
         handlers_config["file"] = {
-            "class_": "logging.FileHandler",
+            "class": "logging.FileHandler",
             "level": level,
             "formatter": "standard",
             "filename": log_file,
-            "stream": None,
         }
     
     # Root logger configuration
-    root_logger: LoggerDict = {
+    root_logger: Dict[str, Any] = {
         "level": level,
         "handlers": handlers,
         "propagate": False,
     }
     
     # Full logging configuration
-    config: LoggingConfig = {
+    config: Dict[str, Any] = {
         "version": 1,
         "formatters": {
             "standard": {
@@ -129,11 +128,6 @@ def setup_logging(
         log_to_console: Whether to log to console (default: True)
     """
     config = get_logging_config(level, log_file, log_to_console)
-    
-    # Fix class_ keys for logging.config
-    for handler in config["handlers"].values():
-        handler["class"] = handler.pop("class_")
-    
     logging.config.dictConfig(config)
     
     # Log startup message

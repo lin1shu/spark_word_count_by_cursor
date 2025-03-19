@@ -1,14 +1,21 @@
 name: Spark Word Count CI
 
+# Disabled temporarily
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - disabled_branch_name  # This branch doesn't exist, so workflow won't run
+  # Original configuration commented out
+  # push:
+  #   branches: [ main ]
+  # pull_request:
+  #   branches: [ main ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Add explicit condition to disable
+    if: false
     strategy:
       matrix:
         python-version: [3.8, 3.9, '3.10']

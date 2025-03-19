@@ -5,9 +5,10 @@ This module handles loading configuration from environment variables,
 configuration files, and provides defaults.
 """
 
+import json
 import os
-from dataclasses import dataclass
-from typing import Dict, Optional
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -33,13 +34,7 @@ class DatabaseConfig:
 
     def to_dict(self) -> Dict[str, str]:
         """Convert to dictionary for psycopg2."""
-        return {
-            "dbname": self.dbname,
-            "user": self.user,
-            "password": self.password,
-            "host": self.host,
-            "port": self.port,
-        }
+        return asdict(self)
 
     def to_jdbc_properties(self) -> Dict[str, str]:
         """Convert to JDBC connection properties for PySpark."""
@@ -100,19 +95,68 @@ class WebConfig:
         )
 
 
+@dataclass
 class AppConfig:
     """Main application configuration."""
 
-    def __init__(
-        self,
-        db_config: Optional[DatabaseConfig] = None,
-        spark_config: Optional[SparkConfig] = None,
-        web_config: Optional[WebConfig] = None,
-    ):
-        """Initialize application configuration."""
-        self.db = db_config or DatabaseConfig.from_env()
-        self.spark = spark_config or SparkConfig.from_env()
-        self.web = web_config or WebConfig.from_env()
+    db: DatabaseConfig = field(default_factory=DatabaseConfig)
+    spark: SparkConfig = field(default_factory=SparkConfig)
+    web: WebConfig = field(default_factory=WebConfig)
+
+
+def get_config(config_file: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get configuration from a file or default values.
+    
+    Args:
+        config_file: Path to the configuration file (default: config.json in the current directory)
+        
+    Returns:
+        Dict[str, Any]: Configuration dictionary
+    """
+    if config_file is None:
+        config_file = os.path.join(os.getcwd(), "config.json")
+    
+    # Default configuration
+    config: Dict[str, Any] = {
+        "db": DatabaseConfig().to_dict(),
+        "spark": asdict(SparkConfig()),
+        "web": asdict(WebConfig()),
+    }
+    
+    # Load configuration from file if it exists
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, "r") as f:
+                file_config = json.load(f)
+                # Update the default configuration with values from the file
+                for section, values in file_config.items():
+                    if section in config and isinstance(values, dict):
+                        config[section].update(values)
+        except Exception as e:
+            print(f"Error loading configuration from {config_file}: {e}")
+    
+    return config
+
+
+def get_db_config() -> Dict[str, Any]:
+    """
+    Get database configuration with environment variable overrides.
+    
+    Returns:
+        Dict[str, Any]: Database configuration dictionary
+    """
+    # Get base configuration
+    config = get_config()
+    db_config = config.get("db", {})
+    
+    # Override with environment variables if set
+    for key in ["host", "port", "database", "user", "password"]:
+        env_var = f"DB_{key.upper()}"
+        if env_var in os.environ:
+            db_config[key] = os.environ[env_var]
+    
+    return db_config
 
 
 # Default application configuration
