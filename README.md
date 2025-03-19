@@ -1,12 +1,14 @@
 # Spark Word Count
 
-A Python application for counting word frequencies in text documents using Apache Spark and PostgreSQL.
+A Python application for counting word frequencies in text documents using Apache Spark and PostgreSQL, with a web-based visualization interface.
 
 ## Features
 
 - Count the frequency of each word in a text document
 - Store results in CSV format or PostgreSQL database
 - Update existing word counts in PostgreSQL
+- Web application to visualize and explore word frequencies
+- RESTful API endpoints for accessing word count data
 - Properly structured Python package
 
 ## Project Structure
@@ -21,6 +23,11 @@ spark_word_count/
 │       ├── __init__.py    # Package initialization
 │       ├── __main__.py    # Main entry point
 │       ├── core.py        # Core word counting functionality
+│       ├── webapp.py      # Flask web application
+│       ├── templates/     # HTML templates for web interface
+│       │   ├── base.html  # Base template with layout
+│       │   ├── index.html # Homepage with statistics
+│       │   └── search.html# Word search interface
 │       └── db/            # Database integration
 │           ├── __init__.py
 │           └── postgres.py # PostgreSQL-specific code
@@ -35,14 +42,15 @@ spark_word_count/
 - Apache Spark 3.0+
 - Java 8+ (required for Spark)
 - PostgreSQL (optional, for database integration)
+- Flask (for web application)
 
 ## Installation
 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/spark_word_count.git
-cd spark_word_count
+git clone https://github.com/lin1shu/spark_word_count_by_cursor.git
+cd spark_word_count_by_cursor
 ```
 
 2. Create and activate a virtual environment:
@@ -80,6 +88,28 @@ Update existing word counts in PostgreSQL:
 spark-word-count data/longer_sample.txt --postgres --update
 ```
 
+Launch the web application:
+
+```bash
+export DB_HOST="localhost"  # Set your PostgreSQL host
+spark-word-count web --port 5001
+```
+
+### Web Application
+
+The web application provides a user-friendly interface to:
+1. View overall word statistics (total words, unique words, avg/median frequency)
+2. Visualize top words in a bar chart
+3. Search for specific words and see their frequencies
+
+Access the web application at: http://localhost:5001
+
+### API Endpoints
+
+- `GET /api/stats` - Get overall word count statistics
+- `GET /api/top_words?limit=N` - Get top N most frequent words
+- `GET /api/search?word=example` - Search for a specific word's frequency
+
 ### As a Library
 
 ```python
@@ -106,6 +136,14 @@ word_count_update("data/longer_sample.txt", jdbc_url, db_properties)
 
 ```bash
 docker run --name postgres-spark -e POSTGRES_PASSWORD=sparkdemo -e POSTGRES_DB=wordcount -p 5432:5432 -d postgres:13
+```
+
+## Performance
+
+The application handles large text files (2GB+) efficiently using Apache Spark's distributed processing capabilities. For optimal performance with large files, adjust Spark memory settings:
+
+```bash
+spark-word-count data/large_sample.txt --postgres --driver-memory 8g --executor-memory 8g --max-result-size 4g
 ```
 
 ## Contributing
