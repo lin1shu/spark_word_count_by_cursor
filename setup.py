@@ -11,6 +11,9 @@ setup(
     install_requires=[
         "pyspark>=3.0.0",
         "psycopg2-binary>=2.8.0",
+        "flask>=2.3.3",
+        "matplotlib>=3.7.2",
+        "pandas>=2.0.3",
     ],
     entry_points={
         "console_scripts": [
