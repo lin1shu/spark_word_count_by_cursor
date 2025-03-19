@@ -6,7 +6,6 @@ import json
 from unittest import mock
 
 import pytest
-from flask import Flask
 
 from spark_word_count.webapp import create_app
 

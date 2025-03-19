@@ -105,10 +105,9 @@ def test_get_config_default():
 
 def test_get_config_from_file():
     """Test that get_config reads from a config file if it exists."""
-    mock_config = {"db": {"host": "testhost", "port": 5432}}
-    
     with mock.patch("os.path.exists", return_value=True):
-        with mock.patch("builtins.open", mock.mock_open(read_data='{"db": {"host": "testhost", "port": 5432}}')):
+        mock_config_data = '{"db": {"host": "testhost", "port": 5432}}'
+        with mock.patch("builtins.open", mock.mock_open(read_data=mock_config_data)):
             config = get_config()
             assert config["db"]["host"] == "testhost"
             assert config["db"]["port"] == 5432

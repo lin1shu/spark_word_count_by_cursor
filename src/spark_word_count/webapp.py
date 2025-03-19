@@ -2,16 +2,13 @@
 Web application for displaying word count results.
 """
 
-import json
 import logging
-import os
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Tuple, Any
 
 import psycopg2
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from psycopg2.extras import RealDictCursor
-import pandas as pd
 
 from spark_word_count.config import get_db_config
 
