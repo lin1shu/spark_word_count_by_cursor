@@ -81,6 +81,10 @@ results/
 # Large data files
 data/large_sample.txt
 
+# Java JAR files
+*.jar
+jars/
+
 # Data files
 data/
 *.txt 
