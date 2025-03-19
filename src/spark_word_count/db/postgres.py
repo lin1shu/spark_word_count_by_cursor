@@ -12,7 +12,6 @@ from pyspark.sql.functions import (
     regexp_replace,
     split,
     trim,
-    when,
 )
 
 
@@ -28,7 +27,7 @@ def word_count_postgres(
 ):
     """
     Count word frequencies in a text document using PySpark and save results to PostgreSQL.
-
+    
     Args:
         input_path (str): Path to the input text file
         jdbc_url (str): JDBC URL for the PostgreSQL database
@@ -40,16 +39,17 @@ def word_count_postgres(
         batch_size (int): Batch size for writing to PostgreSQL
     """
     # Initialize Spark session with PostgreSQL JDBC driver and optimized configuration
-    spark = (
-        SparkSession.builder.appName("WordCount")
-        .config("spark.jars", jdbc_jar_path)
-        .config("spark.driver.memory", memory)
-        .config("spark.executor.memory", executor_memory)
-        .config("spark.driver.maxResultSize", max_result_size)
-        .config("spark.sql.shuffle.partitions", "10")
-        .config("spark.default.parallelism", "10")
-        .getOrCreate()
-    )
+    spark = SparkSession.builder.appName("WordCount").config(
+        "spark.jars", jdbc_jar_path
+    ).config("spark.driver.memory", memory).config(
+        "spark.executor.memory", executor_memory
+    ).config(
+        "spark.driver.maxResultSize", max_result_size
+    ).config(
+        "spark.sql.shuffle.partitions", "10"
+    ).config(
+        "spark.default.parallelism", "10"
+    ).getOrCreate()
 
     # Set log level to reduce verbosity
     spark.sparkContext.setLogLevel("WARN")
@@ -65,8 +65,7 @@ def word_count_postgres(
         explode(
             split(
                 # Remove punctuation and convert to lowercase
-                regexp_replace(lower(trim(col("value"))), "[^a-zA-Z\\s]", ""),
-                "\\s+",
+                regexp_replace(lower(trim(col("value"))), "[^a-zA-Z\\s]", ""), "\\s+"
             )
         ).alias("word")
     )
@@ -77,25 +76,27 @@ def word_count_postgres(
     # Count word frequencies
     word_counts = words_df.groupBy("word").agg(count("*").alias("count"))
 
-    # Sort by count in descending order
-    word_counts = word_counts.orderBy("count", ascending=False)
+    # Print some word count statistics
+    print("Word count statistics:")
+    try:
+        total_words = word_counts.agg({"count": "sum"}).collect()[0][0]
+        print(f"Total words: {total_words}")
+    except Exception:
+        print("Could not calculate total words")
 
-    # Add JDBC batch options for better performance with large datasets
-    jdbc_properties = db_properties.copy()
-    jdbc_properties["batchsize"] = str(batch_size)
+    try:
+        unique_words = word_counts.count()
+        print(f"Unique words: {unique_words}")
+    except Exception:
+        print("Could not calculate unique words")
 
-    # Create the table in PostgreSQL if it doesn't exist
-    print(f"Saving results to PostgreSQL table 'word_counts'")
-    word_counts.write.option("numPartitions", 10).jdbc(
-        url=jdbc_url, table="word_counts", mode="overwrite", properties=jdbc_properties
+    # Save word counts to PostgreSQL
+    word_counts.write.jdbc(
+        url=jdbc_url, table="word_counts", mode="overwrite", properties=db_properties
     )
 
-    print(f"Word count results saved to PostgreSQL table 'word_counts'")
-
-    # Stop the Spark session
+    print("Word counts successfully saved to PostgreSQL")
     spark.stop()
-
-    return word_counts
 
 
 def word_count_update(
@@ -110,7 +111,7 @@ def word_count_update(
 ):
     """
     Count word frequencies in a text document using PySpark and update results in PostgreSQL.
-
+    
     Args:
         input_path (str): Path to the input text file
         jdbc_url (str): JDBC URL for the PostgreSQL database
@@ -122,16 +123,17 @@ def word_count_update(
         batch_size (int): Batch size for writing to PostgreSQL
     """
     # Initialize Spark session with PostgreSQL JDBC driver and optimized configuration
-    spark = (
-        SparkSession.builder.appName("WordCountUpdate")
-        .config("spark.jars", jdbc_jar_path)
-        .config("spark.driver.memory", memory)
-        .config("spark.executor.memory", executor_memory)
-        .config("spark.driver.maxResultSize", max_result_size)
-        .config("spark.sql.shuffle.partitions", "10")
-        .config("spark.default.parallelism", "10")
-        .getOrCreate()
-    )
+    spark = SparkSession.builder.appName("WordCountUpdate").config(
+        "spark.jars", jdbc_jar_path
+    ).config("spark.driver.memory", memory).config(
+        "spark.executor.memory", executor_memory
+    ).config(
+        "spark.driver.maxResultSize", max_result_size
+    ).config(
+        "spark.sql.shuffle.partitions", "10"
+    ).config(
+        "spark.default.parallelism", "10"
+    ).getOrCreate()
 
     # Set log level to reduce verbosity
     spark.sparkContext.setLogLevel("WARN")
@@ -147,8 +149,7 @@ def word_count_update(
         explode(
             split(
                 # Remove punctuation and convert to lowercase
-                regexp_replace(lower(trim(col("value"))), "[^a-zA-Z\\s]", ""),
-                "\\s+",
+                regexp_replace(lower(trim(col("value"))), "[^a-zA-Z\\s]", ""), "\\s+"
             )
         ).alias("word")
     )
@@ -181,58 +182,48 @@ def word_count_update(
         has_existing_table = False
 
     if has_existing_table:
-        # Create a temporary view of new counts for better join performance
-        new_word_counts.createOrReplaceTempView("new_counts")
-
-        # Create a temporary view of existing counts for better join performance
-        existing_word_counts.createOrReplaceTempView("existing_counts")
-
-        # Perform the join using SQL for better performance with large datasets
-        combined_counts = spark.sql(
-            """
-            SELECT 
-                COALESCE(e.word, n.word) as word,
-                COALESCE(e.count, 0) + COALESCE(n.new_count, 0) as count
-            FROM 
-                existing_counts e
-            FULL OUTER JOIN 
-                new_counts n
-            ON 
-                e.word = n.word
-        """
+        # Join existing and new word counts
+        joined = existing_word_counts.join(
+            new_word_counts, existing_word_counts.word == new_word_counts.word, "full_outer"
         )
 
-        # Sort by count in descending order
-        combined_counts = combined_counts.orderBy("count", ascending=False)
+        # Update the counts (add new_count to count, or use new_count if count is null)
+        updated_counts = joined.select(
+            col("word").alias("word"),
+            (
+                col("count") + col("new_count")
+                if col("count").isNotNull() and col("new_count").isNotNull()
+                else col("count")
+                if col("count").isNotNull()
+                else col("new_count")
+            ).alias("count"),
+        )
 
-        # Save the results, overwriting the existing table
-        print(f"Saving updated results to PostgreSQL table 'word_counts'")
-        combined_counts.write.option("numPartitions", 10).jdbc(
+        # Save updated word counts to PostgreSQL
+        updated_counts.write.jdbc(
             url=jdbc_url, table="word_counts", mode="overwrite", properties=jdbc_properties
         )
-
-        print(f"Updated word counts in PostgreSQL table 'word_counts'")
-        result_df = combined_counts
+        print("Word counts successfully updated in PostgreSQL")
     else:
-        # Rename column to match expected schema
-        new_counts_df = new_word_counts.withColumnRenamed("new_count", "count")
-
-        # Sort by count in descending order
-        new_counts_df = new_counts_df.orderBy("count", ascending=False)
-
-        # Create new table
-        print(f"Creating new PostgreSQL table 'word_counts'")
-        new_counts_df.write.option("numPartitions", 10).jdbc(
+        # Create a new word_counts table
+        new_word_counts = new_word_counts.withColumnRenamed("new_count", "count")
+        new_word_counts.write.jdbc(
             url=jdbc_url, table="word_counts", mode="overwrite", properties=jdbc_properties
         )
+        print("Word counts successfully saved to PostgreSQL (new table)")
 
-        print(f"Created new PostgreSQL table 'word_counts'")
-        result_df = new_counts_df
+    # Print some statistics
+    try:
+        total_words = (
+            spark.read.jdbc(url=jdbc_url, table="word_counts", properties=db_properties)
+            .agg({"count": "sum"})
+            .collect()[0][0]
+        )
+        print(f"Total words in database: {total_words}")
+    except Exception:
+        print("Could not calculate total words in database")
 
-    # Stop the Spark session
     spark.stop()
-
-    return result_df
 
 
 def main():
@@ -248,7 +239,11 @@ def main():
 
     # PostgreSQL connection info
     jdbc_url = "jdbc:postgresql://localhost:5432/wordcount"
-    db_properties = {"user": "postgres", "password": "sparkdemo", "driver": "org.postgresql.Driver"}
+    db_properties = {
+        "user": "postgres",
+        "password": "sparkdemo",
+        "driver": "org.postgresql.Driver",
+    }
 
     if update_mode:
         word_count_update(input_path, jdbc_url, db_properties)

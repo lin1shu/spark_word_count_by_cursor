@@ -1,116 +1,159 @@
 """
-Logging configuration for Spark Word Count.
-
-This module handles setting up logging for various components of the application.
-It provides a consistent format and centralized configuration for all logging.
+Logging configuration for the application.
 """
 
 import logging
 import logging.config
 import os
 import sys
-from typing import Any, Dict, Optional, Union
-
-# Default log levels
-DEFAULT_LOG_LEVEL = "INFO"
-DEFAULT_PYSPARK_LOG_LEVEL = "WARN"
-
-# Format strings for different levels of verbosity
-SIMPLE_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-DETAILED_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(pathname)s:%(lineno)d - %(message)s"
+from typing import Dict, List, Any, Union, Optional, TypedDict
 
 
-def get_logger(name: str) -> logging.Logger:
-    """Get a logger with the specified name.
-
-    Args:
-        name: The name of the logger, typically __name__ of the calling module.
-
-    Returns:
-        A configured logger instance.
-    """
-    return logging.getLogger(name)
+class HandlerDict(TypedDict):
+    """TypedDict for handler configuration."""
+    class_: str
+    level: Union[str, int]
+    formatter: str
+    filename: Optional[str]
+    stream: Optional[Union[str, object]]
 
 
-def configure_logging(
-    level: Optional[Union[str, int]] = None,
-    pyspark_level: Optional[Union[str, int]] = None,
-    format_string: Optional[str] = None,
+class LoggerDict(TypedDict):
+    """TypedDict for logger configuration."""
+    level: Union[str, int]
+    handlers: List[str]
+    propagate: bool
+
+
+class LoggingConfig(TypedDict):
+    """TypedDict for logging configuration."""
+    version: int
+    formatters: Dict[str, Dict[str, Any]]
+    handlers: Dict[str, HandlerDict]
+    loggers: Dict[str, LoggerDict]
+    root: LoggerDict
+
+
+def get_logging_config(
+    level: Union[str, int] = "INFO",
     log_file: Optional[str] = None,
-) -> None:
-    """Configure logging for the application.
-
-    Args:
-        level: The log level for the application loggers.
-        pyspark_level: The log level specifically for PySpark loggers.
-        format_string: The format string to use for logging.
-        log_file: Optional path to a log file, if None logs to stderr only.
+    log_to_console: bool = True,
+) -> LoggingConfig:
     """
-    # Use defaults if not specified
-    level = level or os.environ.get("LOG_LEVEL", DEFAULT_LOG_LEVEL)
-    pyspark_level = pyspark_level or os.environ.get("PYSPARK_LOG_LEVEL", DEFAULT_PYSPARK_LOG_LEVEL)
-    format_string = format_string or (
-        DETAILED_FORMAT
-        if os.environ.get("LOG_DETAILED", "").lower() in ("true", "1", "t")
-        else SIMPLE_FORMAT
-    )
-
-    # Convert string log levels to their numeric values
-    if isinstance(level, str):
-        level = getattr(logging, level.upper())
-    if isinstance(pyspark_level, str):
-        pyspark_level = getattr(logging, pyspark_level.upper())
-
-    # Basic configuration for root logger
-    handlers: Dict[str, Any] = {}
-
-    # Always add a console handler
-    handlers["console"] = {
-        "class": "logging.StreamHandler",
-        "level": level,
-        "formatter": "default",
-        "stream": sys.stderr,
-    }
-
-    # Add a file handler if log_file is specified
-    if log_file:
-        handlers["file"] = {
-            "class": "logging.FileHandler",
+    Get the logging configuration.
+    
+    Args:
+        level: Logging level (default: INFO)
+        log_file: Path to log file (default: None)
+        log_to_console: Whether to log to console (default: True)
+        
+    Returns:
+        LoggingConfig: Logging configuration dictionary
+    """
+    handlers: List[str] = []
+    handlers_config: Dict[str, HandlerDict] = {}
+    
+    # Console handler
+    if log_to_console:
+        handlers.append("console")
+        handlers_config["console"] = {
+            "class_": "logging.StreamHandler",
             "level": level,
-            "formatter": "default",
+            "formatter": "standard",
+            "stream": sys.stdout,
+            "filename": None,
+        }
+    
+    # File handler
+    if log_file:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        handlers.append("file")
+        handlers_config["file"] = {
+            "class_": "logging.FileHandler",
+            "level": level,
+            "formatter": "standard",
             "filename": log_file,
-            "mode": "a",
+            "stream": None,
         }
-
-    # Configure logging
-    logging.config.dictConfig(
-        {
-            "version": 1,
-            "disable_existing_loggers": False,
-            "formatters": {
-                "default": {
-                    "format": format_string,
-                },
+    
+    # Root logger configuration
+    root_logger: LoggerDict = {
+        "level": level,
+        "handlers": handlers,
+        "propagate": False,
+    }
+    
+    # Full logging configuration
+    config: LoggingConfig = {
+        "version": 1,
+        "formatters": {
+            "standard": {
+                "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
             },
-            "handlers": handlers,
-            "loggers": {
-                "": {  # Root logger
-                    "level": level,
-                    "handlers": list(handlers.keys()),
-                    "propagate": True,
-                },
-                "pyspark": {
-                    "level": pyspark_level,
-                    "handlers": list(handlers.keys()),
-                    "propagate": False,
-                },
-                "py4j": {
-                    "level": pyspark_level,
-                    "handlers": list(handlers.keys()),
-                    "propagate": False,
-                },
+            "simple": {
+                "format": "%(levelname)s %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
             },
-        }
-    )
+        },
+        "handlers": handlers_config,
+        "loggers": {
+            "spark_word_count": {
+                "level": level,
+                "handlers": handlers,
+                "propagate": False,
+            },
+            "pyspark": {
+                "level": "WARN",
+                "handlers": handlers,
+                "propagate": False,
+            },
+        },
+        "root": root_logger,
+    }
+    
+    return config
 
-    logging.getLogger(__name__).debug("Logging configured successfully.")
+
+def setup_logging(
+    level: Union[str, int] = "INFO",
+    log_file: Optional[str] = None,
+    log_to_console: bool = True,
+) -> None:
+    """
+    Set up logging configuration.
+    
+    Args:
+        level: Logging level (default: INFO)
+        log_file: Path to log file (default: None)
+        log_to_console: Whether to log to console (default: True)
+    """
+    config = get_logging_config(level, log_file, log_to_console)
+    
+    # Fix class_ keys for logging.config
+    for handler in config["handlers"].values():
+        handler["class"] = handler.pop("class_")
+    
+    logging.config.dictConfig(config)
+    
+    # Log startup message
+    logger = logging.getLogger("spark_word_count")
+    logger.info("Logging configured with level %s", level)
+    if log_file:
+        logger.info("Logging to file: %s", log_file)
+
+
+def main() -> None:
+    """Test the logging configuration."""
+    setup_logging(level="DEBUG", log_file="logs/test.log")
+    
+    logger = logging.getLogger("spark_word_count")
+    logger.debug("This is a debug message")
+    logger.info("This is an info message")
+    logger.warning("This is a warning message")
+    logger.error("This is an error message")
+    logger.critical("This is a critical message")
+
+
+if __name__ == "__main__":
+    main()

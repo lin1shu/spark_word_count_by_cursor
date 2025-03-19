@@ -1,5 +1,5 @@
 """
-Unit tests for the webapp module.
+Unit tests for the web application.
 """
 
 import json
@@ -8,88 +8,70 @@ from unittest import mock
 import pytest
 from flask import Flask
 
-from spark_word_count.webapp import app
+from spark_word_count.webapp import create_app
 
 
 @pytest.fixture
-def client():
-    """Create a test client for the Flask app."""
-    app.config["TESTING"] = True
-    with app.test_client() as client:
-        yield client
+def app():
+    """Create a test Flask application."""
+    with mock.patch("spark_word_count.webapp.get_db_connection") as mock_db_conn:
+        # Create a mock cursor
+        mock_cursor = mock.MagicMock()
+        mock_db_conn.return_value.cursor.return_value = mock_cursor
+        
+        # Set up mock responses for different queries
+        def execute_side_effect(query, *args, **kwargs):
+            if "SUM" in query and "total_words" in query:
+                mock_cursor.fetchone.return_value = {"total_words": 1000000}
+            elif "COUNT" in query and "unique_words" in query:
+                mock_cursor.fetchone.return_value = {"unique_words": 10000}
+            elif "AVG" in query:
+                mock_cursor.fetchone.return_value = {"avg_frequency": 100.5}
+            elif "PERCENTILE_CONT" in query:
+                mock_cursor.fetchone.return_value = {"median_frequency": 20.0}
+            elif "ORDER BY count DESC" in query:
+                mock_cursor.fetchall.return_value = [
+                    {"word": "the", "count": 50000},
+                    {"word": "and", "count": 40000},
+                    {"word": "to", "count": 30000},
+                ]
+        
+        mock_cursor.execute.side_effect = execute_side_effect
+        
+        app = create_app()
+        app.config["TESTING"] = True
+        
+        with app.test_client() as client:
+            yield client
 
 
-@mock.patch("spark_word_count.webapp.get_word_stats")
-def test_stats_endpoint(mock_get_stats, client):
-    """Test the stats endpoint returns the expected data."""
-    mock_get_stats.return_value = {
-        "total_words": 1000,
-        "unique_words": 100,
-        "avg_frequency": 10.0,
-        "median_frequency": 5.0,
-    }
-
-    response = client.get("/api/stats")
-
+def test_index_route(app):
+    """Test the index route."""
+    response = app.get("/")
     assert response.status_code == 200
+
+
+def test_api_top_words(app):
+    """Test the top words API endpoint."""
+    response = app.get("/api/top_words")
+    assert response.status_code == 200
+    
+    data = json.loads(response.data)
+    assert isinstance(data, list)
+    assert len(data) > 0
+    assert "word" in data[0]
+    assert "count" in data[0]
+
+
+def test_api_stats(app):
+    """Test the stats API endpoint."""
+    response = app.get("/api/stats")
+    assert response.status_code == 200
+    
     data = json.loads(response.data)
     assert "total_words" in data
-    assert data["total_words"] == 1000
-    assert data["unique_words"] == 100
-    assert data["avg_frequency"] == 10.0
-    assert data["median_frequency"] == 5.0
-
-
-@mock.patch("spark_word_count.webapp.get_top_words")
-def test_top_words_endpoint(mock_get_top_words, client):
-    """Test the top_words endpoint returns the expected data."""
-    mock_get_top_words.return_value = [
-        ("the", 150),
-        ("and", 100),
-        ("is", 80),
-    ]
-
-    response = client.get("/api/top_words?limit=3")
-
-    assert response.status_code == 200
-    # Just check that the response is valid JSON and contains data
-    data = json.loads(response.data)
-    assert isinstance(data, list)
-
-
-@mock.patch("spark_word_count.webapp.search_word")
-def test_search_endpoint(mock_search_word, client):
-    """Test the search endpoint returns the expected data."""
-    # If search returns None, it should still handle it gracefully
-    mock_search_word.return_value = None
-
-    response = client.get("/api/search?word=test")
-
-    assert response.status_code == 200
-    # Just check that the response is valid JSON
-    data = json.loads(response.data)
-    assert isinstance(data, list)
-
-    # Test with actual results
-    mock_search_word.return_value = [("test", 50), ("testing", 30)]
-    response = client.get("/api/search?word=test")
-    assert response.status_code == 200
-
-
-def test_home_route(client):
-    """Test the home route returns the index template."""
-    with mock.patch("spark_word_count.webapp.get_word_stats") as mock_stats:
-        with mock.patch("spark_word_count.webapp.get_top_words") as mock_top_words:
-            mock_stats.return_value = {
-                "total_words": 1000,
-                "unique_words": 100,
-                "avg_frequency": 10.0,
-                "median_frequency": 5.0,
-            }
-            mock_top_words.return_value = [("the", 150), ("and", 100)]
-
-            response = client.get("/")
-
-            assert response.status_code == 200
-            # Checking for text that actually exists in the rendered template
-            assert b"Spark Word Count" in response.data
+    assert "unique_words" in data
+    assert "avg_frequency" in data
+    assert "median_frequency" in data
+    assert data["total_words"] == 1000000
+    assert data["unique_words"] == 10000

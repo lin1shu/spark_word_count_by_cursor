@@ -7,7 +7,7 @@ from unittest import mock
 
 import pytest
 
-from spark_word_count.config import AppConfig, DatabaseConfig, SparkConfig, WebConfig
+from spark_word_count.config import AppConfig, DatabaseConfig, SparkConfig, WebConfig, get_db_config, get_config
 
 
 def test_database_config_defaults():
@@ -93,3 +93,41 @@ def test_app_config_integration():
     assert app_config.db.dbname == "testdb"
     assert app_config.spark.app_name == "TestApp"
     assert app_config.web.port == 8080
+
+
+def test_get_config_default():
+    """Test that get_config returns default values when no file is found."""
+    with mock.patch("os.path.exists", return_value=False):
+        config = get_config()
+        assert isinstance(config, dict)
+        assert "db" in config
+
+
+def test_get_config_from_file():
+    """Test that get_config reads from a config file if it exists."""
+    mock_config = {"db": {"host": "testhost", "port": 5432}}
+    
+    with mock.patch("os.path.exists", return_value=True):
+        with mock.patch("builtins.open", mock.mock_open(read_data='{"db": {"host": "testhost", "port": 5432}}')):
+            config = get_config()
+            assert config["db"]["host"] == "testhost"
+            assert config["db"]["port"] == 5432
+
+
+def test_get_db_config_default():
+    """Test that get_db_config returns default values."""
+    with mock.patch("spark_word_count.config.get_config") as mock_get_config:
+        mock_get_config.return_value = {"db": {"host": "localhost", "port": 5432}}
+        db_config = get_db_config()
+        assert db_config["host"] == "localhost"
+        assert db_config["port"] == 5432
+
+
+def test_get_db_config_env_override():
+    """Test that get_db_config uses environment variables if set."""
+    with mock.patch.dict(os.environ, {"DB_HOST": "envhost", "DB_PORT": "1234"}):
+        with mock.patch("spark_word_count.config.get_config") as mock_get_config:
+            mock_get_config.return_value = {"db": {"host": "confighost", "port": 5432}}
+            db_config = get_db_config()
+            assert db_config["host"] == "envhost"
+            assert db_config["port"] == "1234"

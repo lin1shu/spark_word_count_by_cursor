@@ -1,232 +1,304 @@
 """
-Web application to display word count statistics from PostgreSQL database.
+Web application for displaying word count results.
 """
 
+import json
+import logging
 import os
+from typing import Dict, List, Optional, Tuple, Any, Union
 
-import matplotlib
-import pandas as pd
 import psycopg2
-
-matplotlib.use("Agg")  # Use non-interactive backend
-import base64
-from io import BytesIO
-
-import matplotlib.pyplot as plt
 from flask import Flask, jsonify, render_template, request
+from flask_cors import CORS
+from psycopg2.extras import RealDictCursor
+import pandas as pd
 
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "templates"))
+from spark_word_count.config import get_db_config
 
-
-# Add a format_number filter to Jinja2
-@app.template_filter("format_number")
-def format_number(value):
-    """Format a number with commas as thousands separators."""
-    if value is None:
-        return "N/A"
-    if isinstance(value, (int, float)):
-        return f"{value:,}"
-    return value
+logger = logging.getLogger(__name__)
 
 
-# Database connection parameters - configured for Docker container
-DB_PARAMS = {
-    "dbname": "wordcount",
-    "user": "postgres",
-    "password": "sparkdemo",
-    "host": os.environ.get(
-        "DB_HOST", "localhost"
-    ),  # Use environment variable or default to localhost
-    "port": "5432",
-}
-
-
-def get_db_connection():
-    """Create a database connection."""
+def get_db_connection() -> psycopg2.extensions.connection:
+    """Create a connection to the PostgreSQL database.
+    
+    Returns:
+        psycopg2.extensions.connection: A connection to the PostgreSQL database
+    """
     try:
-        conn = psycopg2.connect(**DB_PARAMS)
-        return conn
-    except Exception as e:
-        print(f"Error connecting to database: {e}")
-        return None
-
-
-def get_top_words(limit=20):
-    """Get the top N words by frequency."""
-    conn = get_db_connection()
-    if not conn:
-        return None
-
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT word, count FROM word_counts ORDER BY count DESC LIMIT %s", (limit,))
-        rows = cur.fetchall()
-        return rows
-    except Exception as e:
-        print(f"Error fetching top words: {e}")
-        return None
-    finally:
-        conn.close()
-
-
-def get_word_stats():
-    """Get general statistics about the word counts."""
-    conn = get_db_connection()
-    if not conn:
-        return None
-
-    try:
-        cur = conn.cursor()
-        stats = {}
-
-        # Total number of words
-        cur.execute("SELECT SUM(count) FROM word_counts")
-        stats["total_words"] = cur.fetchone()[0]
-
-        # Number of unique words
-        cur.execute("SELECT COUNT(*) FROM word_counts")
-        stats["unique_words"] = cur.fetchone()[0]
-
-        # Average word frequency
-        cur.execute("SELECT AVG(count) FROM word_counts")
-        stats["avg_frequency"] = round(cur.fetchone()[0], 2)
-
-        # Median word frequency (more complex in PostgreSQL)
-        cur.execute("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY count) FROM word_counts")
-        stats["median_frequency"] = round(cur.fetchone()[0], 2)
-
-        return stats
-    except Exception as e:
-        print(f"Error fetching word stats: {e}")
-        return None
-    finally:
-        conn.close()
-
-
-def search_word(word):
-    """Search for a specific word in the database."""
-    conn = get_db_connection()
-    if not conn:
-        return None
-
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT word, count FROM word_counts WHERE word ILIKE %s", (f"%{word}%",))
-        rows = cur.fetchall()
-        return rows
-    except Exception as e:
-        print(f"Error searching for word: {e}")
-        return None
-    finally:
-        conn.close()
-
-
-def generate_bar_chart(data, title="Top Words", xlabel="Words", ylabel="Frequency"):
-    """Generate a bar chart for the word frequencies."""
-    if not data:
-        return None
-
-    # Convert data to pandas DataFrame
-    df = pd.DataFrame(data, columns=["word", "count"])
-
-    # Create the bar chart
-    plt.figure(figsize=(12, 6))
-    bars = plt.bar(df["word"], df["count"], color="skyblue")
-    plt.title(title, fontsize=16)
-    plt.xlabel(xlabel, fontsize=12)
-    plt.ylabel(ylabel, fontsize=12)
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-
-    # Add value labels on top of each bar
-    for bar in bars:
-        height = bar.get_height()
-        plt.text(
-            bar.get_x() + bar.get_width() / 2.0,
-            height,
-            f"{height:,}",
-            ha="center",
-            va="bottom",
-            rotation=0,
+        db_config = get_db_config()
+        connection = psycopg2.connect(
+            host=db_config["host"],
+            database=db_config["database"],
+            user=db_config["user"],
+            password=db_config["password"],
+            port=db_config["port"],
         )
-
-    # Save the figure to a bytes buffer
-    buffer = BytesIO()
-    plt.savefig(buffer, format="png")
-    buffer.seek(0)
-
-    # Convert the buffer to a base64-encoded string
-    image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    plt.close()
-
-    return image_base64
+        return connection
+    except Exception as e:
+        logger.error(f"Error connecting to database: {e}")
+        raise
 
 
-@app.route("/")
-def index():
-    """Home page displaying the word count statistics."""
-    top_n = request.args.get("top", 20, type=int)
-    top_words = get_top_words(top_n)
-    stats = get_word_stats()
-
-    # Generate the bar chart
-    chart = generate_bar_chart(top_words, f"Top {top_n} Words by Frequency")
-
-    return render_template("index.html", top_words=top_words, stats=stats, chart=chart, top_n=top_n)
-
-
-@app.route("/search")
-def search():
-    """Search for words in the database."""
-    query = request.args.get("q", "")
-    if not query:
-        return render_template("search.html", results=None)
-
-    results = search_word(query)
-
-    # Generate a chart if we have results
-    chart = None
-    if results and len(results) <= 20:  # Only generate chart for reasonable number of results
-        chart = generate_bar_chart(results, f"Search Results for '{query}'")
-
-    return render_template("search.html", results=results, query=query, chart=chart)
-
-
-@app.route("/api/top_words")
-def api_top_words():
-    """API endpoint for getting top words."""
-    limit = request.args.get("limit", 20, type=int)
-    words = get_top_words(limit)
-    if words:
-        return jsonify([{"word": word, "count": count} for word, count in words])
-    return jsonify([])
+def get_top_words(limit: int = 10) -> List[Dict[str, Any]]:
+    """Get the top N words by frequency.
+    
+    Args:
+        limit: Number of top words to return (default: 10)
+        
+    Returns:
+        List[Dict[str, Any]]: List of word count records, each with 'word' and 'count' keys
+    """
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """
+            SELECT word, count 
+            FROM word_counts 
+            ORDER BY count DESC 
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        results = cursor.fetchall()
+        cursor.close()
+        connection.close()
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching top words: {e}")
+        return []
 
 
-@app.route("/api/stats")
-def api_stats():
-    """API endpoint for getting word statistics."""
-    stats = get_word_stats()
-    if stats:
-        return jsonify(stats)
-    return jsonify({})
+def get_word_stats() -> Dict[str, Any]:
+    """Get statistics about the word counts.
+    
+    Returns:
+        Dict[str, Any]: Dictionary containing word count statistics
+    """
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        # Get total words
+        cursor.execute("SELECT SUM(count) as total_words FROM word_counts")
+        total_words = cursor.fetchone()["total_words"]
+        
+        # Get unique words count
+        cursor.execute("SELECT COUNT(*) as unique_words FROM word_counts")
+        unique_words = cursor.fetchone()["unique_words"]
+        
+        # Get average frequency
+        cursor.execute("SELECT AVG(count) as avg_frequency FROM word_counts")
+        avg_frequency = cursor.fetchone()["avg_frequency"]
+        
+        # Get median frequency
+        cursor.execute(
+            """
+            SELECT PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY count) as median_frequency 
+            FROM word_counts
+            """
+        )
+        median_frequency = cursor.fetchone()["median_frequency"]
+        
+        cursor.close()
+        connection.close()
+        
+        return {
+            "total_words": total_words,
+            "unique_words": unique_words,
+            "avg_frequency": avg_frequency,
+            "median_frequency": median_frequency,
+        }
+    except Exception as e:
+        logger.error(f"Error fetching word stats: {e}")
+        return {
+            "total_words": 0,
+            "unique_words": 0,
+            "avg_frequency": 0,
+            "median_frequency": 0,
+        }
 
 
-@app.route("/api/search")
-def api_search():
-    """API endpoint for searching words."""
-    query = request.args.get("q", "")
-    if not query:
-        return jsonify([])
+def get_word_frequency(word: str) -> int:
+    """Get the frequency of a specific word.
+    
+    Args:
+        word: The word to look up
+        
+    Returns:
+        int: The frequency of the word, or 0 if not found
+    """
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT count FROM word_counts WHERE word = %s",
+            (word.lower(),),
+        )
+        result = cursor.fetchone()
+        cursor.close()
+        connection.close()
+        
+        if result:
+            return result[0]
+        return 0
+    except Exception as e:
+        logger.error(f"Error fetching word frequency: {e}")
+        return 0
 
-    results = search_word(query)
-    if results:
-        return jsonify([{"word": word, "count": count} for word, count in results])
-    return jsonify([])
+
+def get_frequency_distribution() -> Dict[str, int]:
+    """Get the distribution of word frequencies.
+    
+    Returns:
+        Dict[str, int]: Dictionary with frequency ranges as keys and counts as values
+    """
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # Define frequency ranges
+        ranges = [
+            (1, 10),
+            (11, 100),
+            (101, 1000),
+            (1001, 10000),
+            (10001, 100000),
+            (100001, float("inf")),
+        ]
+        
+        distribution = {}
+        
+        for start, end in ranges:
+            if end == float("inf"):
+                cursor.execute(
+                    "SELECT COUNT(*) FROM word_counts WHERE count >= %s",
+                    (start,),
+                )
+                range_name = f"{start}+"
+            else:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM word_counts WHERE count >= %s AND count <= %s",
+                    (start, end),
+                )
+                range_name = f"{start}-{end}"
+            
+            distribution[range_name] = cursor.fetchone()[0]
+        
+        cursor.close()
+        connection.close()
+        return distribution
+    except Exception as e:
+        logger.error(f"Error fetching frequency distribution: {e}")
+        return {}
 
 
-def main():
-    """Run the Flask application."""
-    app.run(debug=True, host="0.0.0.0", port=5000)
+def create_app() -> Flask:
+    """Create the Flask application.
+    
+    Returns:
+        Flask: The Flask application instance
+    """
+    app = Flask(__name__, static_folder="static", template_folder="templates")
+    CORS(app)
+    
+    @app.route("/")
+    def index() -> str:
+        """Render the main index page.
+        
+        Returns:
+            str: Rendered HTML template
+        """
+        return render_template("index.html")
+    
+    @app.route("/api/top_words")
+    def api_top_words() -> Tuple[Any, int]:
+        """API endpoint to get top words.
+        
+        Returns:
+            Tuple[Any, int]: JSON response and HTTP status code
+        """
+        try:
+            limit = request.args.get("limit", default=10, type=int)
+            return jsonify(get_top_words(limit)), 200
+        except Exception as e:
+            logger.error(f"Error in top_words API: {e}")
+            return jsonify({"error": str(e)}), 500
+    
+    @app.route("/api/stats")
+    def api_stats() -> Tuple[Any, int]:
+        """API endpoint to get word statistics.
+        
+        Returns:
+            Tuple[Any, int]: JSON response and HTTP status code
+        """
+        try:
+            return jsonify(get_word_stats()), 200
+        except Exception as e:
+            logger.error(f"Error in stats API: {e}")
+            return jsonify({"error": str(e)}), 500
+    
+    @app.route("/api/word/<word>")
+    def api_word(word: str) -> Tuple[Any, int]:
+        """API endpoint to get frequency for a specific word.
+        
+        Args:
+            word: The word to look up
+            
+        Returns:
+            Tuple[Any, int]: JSON response and HTTP status code
+        """
+        try:
+            frequency = get_word_frequency(word)
+            return jsonify({"word": word, "frequency": frequency}), 200
+        except Exception as e:
+            logger.error(f"Error in word API: {e}")
+            return jsonify({"error": str(e)}), 500
+    
+    @app.route("/api/distribution")
+    def api_distribution() -> Tuple[Any, int]:
+        """API endpoint to get frequency distribution.
+        
+        Returns:
+            Tuple[Any, int]: JSON response and HTTP status code
+        """
+        try:
+            distribution = get_frequency_distribution()
+            return jsonify(distribution), 200
+        except Exception as e:
+            logger.error(f"Error in distribution API: {e}")
+            return jsonify({"error": str(e)}), 500
+    
+    return app
+
+
+def run_app(debug: bool = False, host: str = "0.0.0.0", port: int = 5000) -> None:
+    """Run the Flask application.
+    
+    Args:
+        debug: Enable debug mode (default: False)
+        host: Host to bind the server to (default: 0.0.0.0)
+        port: Port to run the server on (default: 5000)
+    """
+    app = create_app()
+    app.run(debug=debug, host=host, port=port)
+
+
+def main() -> None:
+    """Command line interface for the web application."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Word Count Web Application")
+    parser.add_argument("--debug", action="store_true", help="Run in debug mode")
+    parser.add_argument(
+        "--host", default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)"
+    )
+    parser.add_argument(
+        "--port", type=int, default=5000, help="Port to run the server on (default: 5000)"
+    )
+    
+    args = parser.parse_args()
+    run_app(debug=args.debug, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
