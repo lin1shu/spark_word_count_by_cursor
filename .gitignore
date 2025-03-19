@@ -76,4 +76,8 @@ metastore_db/
 *.swo
 
 # PySpark results
-results/ 
+results/
+
+# Data files
+data/
+*.txt 
