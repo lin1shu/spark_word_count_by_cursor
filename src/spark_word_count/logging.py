@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, TypedDict, Union
 # Define handler configuration type
 class HandlerDict(TypedDict, total=False):
     """TypedDict for handler configuration."""
+
     class_: str  # Will be mapped to 'class' in the configuration
     formatter: str
     level: Union[str, int]
@@ -21,6 +22,7 @@ class HandlerDict(TypedDict, total=False):
 
 class LoggerDict(TypedDict):
     """TypedDict for logger configuration."""
+
     level: Union[str, int]
     handlers: List[str]
     propagate: bool
@@ -28,6 +30,7 @@ class LoggerDict(TypedDict):
 
 class LoggingConfig(TypedDict):
     """TypedDict for logging configuration."""
+
     version: int
     formatters: Dict[str, Dict[str, Any]]
     handlers: Dict[str, Dict[str, Any]]
@@ -42,18 +45,18 @@ def get_logging_config(
 ) -> Dict[str, Any]:
     """
     Get the logging configuration.
-    
+
     Args:
         level: Logging level (default: INFO)
         log_file: Path to log file (default: None)
         log_to_console: Whether to log to console (default: True)
-        
+
     Returns:
         Dict[str, Any]: Logging configuration dictionary
     """
     handlers: List[str] = []
     handlers_config: Dict[str, Dict[str, Any]] = {}
-    
+
     # Console handler
     if log_to_console:
         handlers.append("console")
@@ -63,7 +66,7 @@ def get_logging_config(
             "formatter": "standard",
             "stream": sys.stdout,
         }
-    
+
     # File handler
     if log_file:
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
@@ -74,14 +77,14 @@ def get_logging_config(
             "formatter": "standard",
             "filename": log_file,
         }
-    
+
     # Root logger configuration
     root_logger: Dict[str, Any] = {
         "level": level,
         "handlers": handlers,
         "propagate": False,
     }
-    
+
     # Full logging configuration
     config: Dict[str, Any] = {
         "version": 1,
@@ -110,7 +113,7 @@ def get_logging_config(
         },
         "root": root_logger,
     }
-    
+
     return config
 
 
@@ -121,7 +124,7 @@ def setup_logging(
 ) -> None:
     """
     Set up logging configuration.
-    
+
     Args:
         level: Logging level (default: INFO)
         log_file: Path to log file (default: None)
@@ -129,7 +132,7 @@ def setup_logging(
     """
     config = get_logging_config(level, log_file, log_to_console)
     logging.config.dictConfig(config)
-    
+
     # Log startup message
     logger = logging.getLogger("spark_word_count")
     logger.info("Logging configured with level %s", level)
@@ -140,7 +143,7 @@ def setup_logging(
 def main() -> None:
     """Test the logging configuration."""
     setup_logging(level="DEBUG", log_file="logs/test.log")
-    
+
     logger = logging.getLogger("spark_word_count")
     logger.debug("This is a debug message")
     logger.info("This is an info message")

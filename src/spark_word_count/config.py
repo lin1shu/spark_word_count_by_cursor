@@ -107,23 +107,23 @@ class AppConfig:
 def get_config(config_file: Optional[str] = None) -> Dict[str, Any]:
     """
     Get configuration from a file or default values.
-    
+
     Args:
         config_file: Path to the configuration file (default: config.json in the current directory)
-        
+
     Returns:
         Dict[str, Any]: Configuration dictionary
     """
     if config_file is None:
         config_file = os.path.join(os.getcwd(), "config.json")
-    
+
     # Default configuration
     config: Dict[str, Any] = {
         "db": DatabaseConfig().to_dict(),
         "spark": asdict(SparkConfig()),
         "web": asdict(WebConfig()),
     }
-    
+
     # Load configuration from file if it exists
     if os.path.exists(config_file):
         try:
@@ -135,27 +135,39 @@ def get_config(config_file: Optional[str] = None) -> Dict[str, Any]:
                         config[section].update(values)
         except Exception as e:
             print(f"Error loading configuration from {config_file}: {e}")
-    
+
     return config
 
 
 def get_db_config() -> Dict[str, Any]:
     """
     Get database configuration with environment variable overrides.
-    
+
     Returns:
         Dict[str, Any]: Database configuration dictionary
     """
-    # Get base configuration
-    config = get_config()
-    db_config = config.get("db", {})
-    
+    # Create default config based on DatabaseConfig
+    db_config = {
+        "host": "localhost",
+        "port": "5432",
+        "dbname": "wordcount",
+        "user": "postgres",
+        "password": "sparkdemo",
+    }
+
     # Override with environment variables if set
-    for key in ["host", "port", "database", "user", "password"]:
-        env_var = f"DB_{key.upper()}"
+    env_mappings = {
+        "DB_HOST": "host",
+        "DB_PORT": "port",
+        "DB_NAME": "dbname",
+        "DB_USER": "user",
+        "DB_PASSWORD": "password",
+    }
+
+    for env_var, config_key in env_mappings.items():
         if env_var in os.environ:
-            db_config[key] = os.environ[env_var]
-    
+            db_config[config_key] = os.environ[env_var]
+
     return db_config
 
 

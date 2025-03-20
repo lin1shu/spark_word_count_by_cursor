@@ -124,7 +124,7 @@ def test_get_db_config_default():
         mock_get_config.return_value = {"db": {"host": "localhost", "port": 5432}}
         db_config = get_db_config()
         assert db_config["host"] == "localhost"
-        assert db_config["port"] == 5432
+        assert db_config["port"] == "5432"
 
 
 def test_get_db_config_env_override():
@@ -134,4 +134,4 @@ def test_get_db_config_env_override():
             mock_get_config.return_value = {"db": {"host": "confighost", "port": 5432}}
             db_config = get_db_config()
             assert db_config["host"] == "envhost"
-            assert db_config["port"] == "1234"
+            assert db_config["port"] == "1234"  # Expect string value for port

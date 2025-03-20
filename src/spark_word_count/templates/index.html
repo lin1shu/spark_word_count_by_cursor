@@ -60,13 +60,11 @@
                 </form>
             </div>
             <div class="card-body">
-                {% if chart %}
-                <div class="chart-container">
-                    <img src="data:image/png;base64,{{ chart }}" class="img-fluid" alt="Top Words Chart">
-                </div>
-                {% endif %}
-                
                 {% if top_words %}
+                <div class="chart-container">
+                    <canvas id="word-frequency-chart"></canvas>
+                </div>
+                
                 <div class="table-responsive">
                     <table class="table table-striped table-hover">
                         <thead>
@@ -100,6 +98,14 @@
 
 {% block scripts %}
 <script>
-    // Add any JavaScript needed for the home page
+    // Prepare data for the chart
+    window.wordFrequencyData = [
+        {% for word, count in top_words %}
+        {
+            "word": "{{ word }}",
+            "count": {{ count }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
 </script>
 {% endblock %} 

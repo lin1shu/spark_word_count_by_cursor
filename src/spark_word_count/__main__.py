@@ -50,9 +50,7 @@ def main() -> None:
         action="store_true",
         help="Start the web server instead of processing files",
     )
-    parser.add_argument(
-        "--debug", action="store_true", help="Run in debug mode (for web server)"
-    )
+    parser.add_argument("--debug", action="store_true", help="Run in debug mode (for web server)")
     parser.add_argument(
         "--host",
         default="0.0.0.0",
@@ -79,7 +77,7 @@ def main() -> None:
         run_app(debug=args.debug, host=args.host, port=args.port)
     elif args.input_path:
         logger.info(f"Processing file: {args.input_path}")
-        
+
         # Use PostgreSQL
         jdbc_url = "jdbc:postgresql://localhost:5432/wordcount"
         db_properties = {
@@ -87,7 +85,7 @@ def main() -> None:
             "password": "sparkdemo",
             "driver": "org.postgresql.Driver",
         }
-        
+
         word_count_postgres(
             args.input_path,
             jdbc_url,

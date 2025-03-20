@@ -5,16 +5,7 @@ PostgreSQL integration for Spark Word Count.
 from typing import Dict
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    col,
-    count,
-    explode,
-    length,
-    lower,
-    regexp_replace,
-    split,
-    trim,
-)
+from pyspark.sql.functions import col, count, explode, length, lower, regexp_replace, split, trim
 
 
 def word_count_postgres(

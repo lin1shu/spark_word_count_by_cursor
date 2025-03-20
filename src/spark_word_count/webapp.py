@@ -24,11 +24,7 @@ def get_db_connection() -> psycopg2.extensions.connection:
     try:
         db_config = get_db_config()
         connection = psycopg2.connect(
-            host=db_config["host"],
-            database=db_config["database"],
-            user=db_config["user"],
-            password=db_config["password"],
-            port=db_config["port"],
+            **db_config  # Use the config directly without trying to rename keys
         )
         return connection
     except Exception as e:
@@ -60,7 +56,7 @@ def get_top_words(limit: int = 10) -> List[Dict[str, Any]]:
         results = cursor.fetchall()
         cursor.close()
         connection.close()
-        
+
         # Convert RealDictRow to Dict
         return [dict(row) for row in results]
     except Exception as e:
@@ -77,22 +73,22 @@ def get_word_stats() -> Dict[str, Any]:
     try:
         connection = get_db_connection()
         cursor = connection.cursor(cursor_factory=RealDictCursor)
-        
+
         # Get total words
         cursor.execute("SELECT SUM(count) as total_words FROM word_counts")
         result = cursor.fetchone()
         total_words = 0 if result is None else result["total_words"]
-        
+
         # Get unique words count
         cursor.execute("SELECT COUNT(*) as unique_words FROM word_counts")
         result = cursor.fetchone()
         unique_words = 0 if result is None else result["unique_words"]
-        
+
         # Get average frequency
         cursor.execute("SELECT AVG(count) as avg_frequency FROM word_counts")
         result = cursor.fetchone()
         avg_frequency = 0 if result is None else result["avg_frequency"]
-        
+
         # Get median frequency
         cursor.execute(
             """
@@ -102,10 +98,10 @@ def get_word_stats() -> Dict[str, Any]:
         )
         result = cursor.fetchone()
         median_frequency = 0 if result is None else result["median_frequency"]
-        
+
         cursor.close()
         connection.close()
-        
+
         return {
             "total_words": total_words,
             "unique_words": unique_words,
@@ -141,7 +137,7 @@ def get_word_frequency(word: str) -> int:
         result = cursor.fetchone()
         cursor.close()
         connection.close()
-        
+
         if result is not None and len(result) > 0:
             return int(result[0])
         return 0
@@ -159,7 +155,7 @@ def get_frequency_distribution() -> Dict[str, int]:
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
-        
+
         # Define frequency ranges
         ranges = [
             (1, 10),
@@ -169,9 +165,9 @@ def get_frequency_distribution() -> Dict[str, int]:
             (10001, 100000),
             (100001, float("inf")),
         ]
-        
+
         distribution: Dict[str, int] = {}
-        
+
         for start, end in ranges:
             if end == float("inf"):
                 cursor.execute(
@@ -185,13 +181,13 @@ def get_frequency_distribution() -> Dict[str, int]:
                     (start, end),
                 )
                 range_name = f"{start}-{end}"
-            
+
             result = cursor.fetchone()
             if result is not None and len(result) > 0:
                 distribution[range_name] = int(result[0])
             else:
                 distribution[range_name] = 0
-        
+
         cursor.close()
         connection.close()
         return distribution
@@ -209,6 +205,18 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder="static", template_folder="templates")
     CORS(app)
 
+    # Add custom filters
+    @app.template_filter("format_number")
+    def format_number(value):
+        """Format a number with thousand separators."""
+        try:
+            return f"{int(value):,}"
+        except (ValueError, TypeError):
+            try:
+                return f"{float(value):.2f}"
+            except (ValueError, TypeError):
+                return value
+
     @app.route("/")
     def index() -> str:
         """Render the main index page.
@@ -216,7 +224,22 @@ def create_app() -> Flask:
         Returns:
             str: Rendered HTML template
         """
-        return render_template("index.html")
+        # Get query parameter for number of top words
+        top_n = request.args.get("top", default=10, type=int)
+        top_n = min(max(top_n, 5), 100)  # Limit between 5 and 100
+
+        # Get top words
+        top_words = get_top_words(top_n)
+
+        # Get statistics
+        stats = get_word_stats()
+
+        return render_template(
+            "index.html",
+            top_words=[(item["word"], item["count"]) for item in top_words],
+            stats=stats,
+            top_n=top_n,
+        )
 
     @app.route("/api/top_words")
     def api_top_words() -> Tuple[Any, int]:
