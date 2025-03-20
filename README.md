@@ -9,7 +9,7 @@ A Python application for counting word frequencies in text documents using Apach
 - Count the frequency of each word in a text document
 - Store results in CSV format or PostgreSQL database
 - Update existing word counts in PostgreSQL
-- Web application to visualize and explore word frequencies
+- **Interactive web visualization** with hover tooltips showing exact word frequencies
 - RESTful API endpoints for accessing word count data
 - Properly structured Python package
 - Comprehensive test suite
@@ -37,9 +37,13 @@ spark_word_count/
 │       │   ├── base.html  # Base template with layout
 │       │   ├── index.html # Homepage with statistics
 │       │   └── search.html# Word search interface
+│       ├── static/        # Static assets for web interface
+│       │   ├── css/       # CSS stylesheets 
+│       │   └── js/        # JavaScript files for interactive charts
 │       └── db/            # Database integration
 │           ├── __init__.py
-│           └── postgres.py # PostgreSQL-specific code
+│           ├── postgres.py # PostgreSQL-specific code
+│           └── schema.sql  # Database schema initialization
 ├── tests/                 # Test suite
 │   ├── unit/              # Unit tests
 │   ├── integration/       # Integration tests
@@ -63,6 +67,7 @@ spark_word_count/
 - Java 8+ (required for Spark)
 - PostgreSQL (optional, for database integration)
 - Flask (for web application)
+- Flask-CORS (for web API cross-origin requests)
 
 ## Installation
 
@@ -84,6 +89,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 ```bash
 pip install -e ".[dev]"
+```
+
+4. Install additional dependencies:
+
+```bash
+pip install flask-cors
 ```
 
 ## Development
@@ -126,6 +137,24 @@ make docs
 make help
 ```
 
+## Database Setup
+
+### Using Docker
+
+The easiest way to set up the PostgreSQL database is using Docker:
+
+```bash
+docker run --name spark-db -e POSTGRES_PASSWORD=sparkdemo -e POSTGRES_DB=wordcount -p 5432:5432 -d postgres:13
+```
+
+### Initialize Database Schema
+
+After starting the database, initialize the schema:
+
+```bash
+docker exec -i spark-db psql -U postgres -d wordcount < src/spark_word_count/db/schema.sql
+```
+
 ## Usage
 
 ### Command Line Interface
@@ -148,18 +177,24 @@ Update existing word counts in PostgreSQL:
 spark-word-count count data/longer_sample.txt --postgres --update
 ```
 
+Process large files with more memory:
+
+```bash
+spark-word-count data/large_sample.txt --postgres --driver-memory 6g --executor-memory 6g --max-result-size 4g
+```
+
 Launch the web application:
 
 ```bash
 # Set environment variables for configuration
-export DB_HOST="localhost"
-export WEB_PORT="5001"
-export LOG_LEVEL="INFO"
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=wordcount
+export DB_USER=postgres
+export DB_PASSWORD=sparkdemo
 
 # Run the web application
-spark-word-count web --port 5001
-# Or use the convenience make target
-make run-web
+python -m src.spark_word_count --web --debug --port 5001
 ```
 
 ### Environment Variables
@@ -178,13 +213,11 @@ The application can be configured using environment variables:
 - `SPARK_DRIVER_MEMORY`: Spark driver memory (default: "4g")
 - `SPARK_EXECUTOR_MEMORY`: Spark executor memory (default: "4g")
 
-See `.env.example` for all available configuration options.
-
 ### Web Application
 
 The web application provides a user-friendly interface to:
 1. View overall word statistics (total words, unique words, avg/median frequency)
-2. Visualize top words in a bar chart
+2. Visualize top words in an interactive bar chart with hover tooltips
 3. Search for specific words and see their frequencies
 
 Access the web application at: http://localhost:5001
@@ -193,7 +226,8 @@ Access the web application at: http://localhost:5001
 
 - `GET /api/stats` - Get overall word count statistics
 - `GET /api/top_words?limit=N` - Get top N most frequent words
-- `GET /api/search?word=example` - Search for a specific word's frequency
+- `GET /api/word/<word>` - Get a specific word's frequency
+- `GET /api/distribution` - Get the distribution of word frequencies
 
 ### As a Library
 
@@ -217,18 +251,58 @@ word_count_postgres("data/sample_text.txt", jdbc_url, jdbc_props)
 word_count_update("data/longer_sample.txt", jdbc_url, jdbc_props)
 ```
 
-## Docker Setup for PostgreSQL
-
-```bash
-docker run --name postgres-spark -e POSTGRES_PASSWORD=sparkdemo -e POSTGRES_DB=wordcount -p 5432:5432 -d postgres:13
-```
-
 ## Performance
 
 The application handles large text files (2GB+) efficiently using Apache Spark's distributed processing capabilities. For optimal performance with large files, adjust Spark memory settings:
 
 ```bash
 spark-word-count count data/large_sample.txt --postgres --driver-memory 8g --executor-memory 8g --max-result-size 4g
+```
+
+## Troubleshooting
+
+### Port 5000 is in use on macOS
+On macOS, port 5000 is often used by AirPlay Receiver. Use a different port:
+
+```bash
+python -m src.spark_word_count --web --debug --port 5001
+```
+
+### Database Connection Issues
+If you see "Error connecting to database" in the logs:
+
+1. Verify the PostgreSQL container is running:
+   ```bash
+   docker ps | grep spark-db
+   ```
+
+2. Ensure the database schema is initialized:
+   ```bash
+   docker exec -i spark-db psql -U postgres -d wordcount < src/spark_word_count/db/schema.sql
+   ```
+
+3. Set environment variables for the database connection:
+   ```bash
+   export DB_HOST=localhost DB_PORT=5432 DB_NAME=wordcount DB_USER=postgres DB_PASSWORD=sparkdemo
+   ```
+
+### Java Installation for PySpark
+If you see "Unable to locate a Java Runtime", install Java:
+
+```bash
+# On macOS with Homebrew
+brew install openjdk@11
+brew link --force openjdk@11
+
+# Set JAVA_HOME environment variable
+export JAVA_HOME=$(brew --prefix)/opt/openjdk@11/libexec/openjdk.jdk/Contents/Home
+```
+
+### Missing Flask-CORS
+If you see "No module named 'flask_cors'", install the package:
+
+```bash
+pip install flask-cors
 ```
 
 ## Documentation
